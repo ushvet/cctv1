@@ -1,0 +1,156 @@
+# ============================================================
+# Hikvision AI CCTV Platform — Docker Compose Stack
+# Windows 11 / WSL2 + NVIDIA GPU Passthrough
+# ============================================================
+
+services:
+  # -------------------------------------------------------
+  # PostgreSQL 16 with pgvector for vector similarity search
+  # -------------------------------------------------------
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: cctv_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-cctv_ai}
+      POSTGRES_USER: ${POSTGRES_USER:-cctv_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-SecureDbPassword!2026}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cctv_admin} -d ${POSTGRES_DB:-cctv_ai}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cctv_net
+
+  # -------------------------------------------------------
+  # Redis — Event deduplication and caching
+  # -------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: cctv_redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cctv_net
+
+  # -------------------------------------------------------
+  # Eclipse Mosquitto — MQTT Broker for Frigate events
+  # -------------------------------------------------------
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: cctv_mosquitto
+    restart: unless-stopped
+    volumes:
+      - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    ports:
+      - "1883:1883"
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -t '$$SYS/#' -C 1 -i probe -W 3 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - cctv_net
+
+  # -------------------------------------------------------
+  # Frigate NVR — Hardware-accelerated RTSP + AI detection
+  # -------------------------------------------------------
+  frigate:
+    image: ghcr.io/blakeblackshear/frigate:stable-tensorrt
+    container_name: cctv_frigate
+    restart: unless-stopped
+    privileged: true
+    shm_size: "256mb"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    volumes:
+      - ./config/frigate.yml:/config/config.yml:ro
+      - frigate_media:/media/frigate
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - "5000:5000"   # Frigate Web UI
+      - "8554:8554"   # RTSP restream
+      - "8555:8555"   # WebRTC (TCP)
+      - "8555:8555/udp" # WebRTC (UDP)
+      - "1984:1984"   # go2rtc API
+    environment:
+      FRIGATE_RTSP_PASSWORD: ${FRIGATE_RTSP_PASSWORD:-FrigateRTSP2026}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: all
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    networks:
+      - cctv_net
+
+  # -------------------------------------------------------
+  # CCTV AI Backend — FastAPI + Unified GPU Inference
+  # -------------------------------------------------------
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    container_name: cctv_backend
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    env_file:
+      - .env
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: all
+    volumes:
+      - ./app:/app/app:ro
+      - backend_media:/app/media
+      - backend_models:/app/models
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy
+    networks:
+      - cctv_net
+
+volumes:
+  postgres_data:
+  redis_data:
+  mosquitto_data:
+  mosquitto_log:
+  frigate_media:
+  backend_media:
+  backend_models:
+
+networks:
+  cctv_net:
+    driver: bridge

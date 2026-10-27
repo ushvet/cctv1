@@ -1,0 +1,22 @@
+# Hikvision AI CCTV Platform
+.env
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+.mypy_cache/
+media/snapshots/*
+media/clips/*
+media/crops/*
+models/*.onnx
+models/*.pt
+models/*.trt
+models/insightface/
+!media/.gitkeep
+!models/.gitkeep
+*.log
+.vscode/
+.idea/

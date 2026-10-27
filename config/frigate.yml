@@ -1,0 +1,199 @@
+# ============================================================
+# Frigate NVR Configuration
+# Hardware: NVIDIA RTX 3060 (NVDEC + TensorRT)
+# Hikvision NVR (192.168.0.29) + Hikvision DVR (192.168.0.11)
+# ============================================================
+
+mqtt:
+  enabled: true
+  host: mosquitto
+  port: 1883
+  topic_prefix: frigate
+  stats_interval: 60
+
+# -------------------------------------------------------
+# go2rtc — Low-latency RTSP restreaming & WebRTC
+# -------------------------------------------------------
+go2rtc:
+  streams:
+    # Front Gate Panoramic (Hikvision ColorVu DS-2CD2T67G2P-LSU/SL on NVR Ch 2)
+    # Includes two-way audio backchannel to the camera's built-in speaker
+    front_gate_panoramic:
+      - "rtsp://admin:kanojia%40123@192.168.0.29:554/Streaming/Channels/201"
+      - "isapi://admin:kanojia%40123@192.168.0.65:80/"
+    front_gate_panoramic_sub:
+      - "rtsp://admin:kanojia%40123@192.168.0.29:554/Streaming/Channels/202"
+
+    # Backyard Turret (Hikvision Dome DS-2CD1343G2-LIU on NVR Ch 1)
+    backyard_turret:
+      - "rtsp://admin:kanojia%40123@192.168.0.29:554/Streaming/Channels/101"
+    backyard_turret_sub:
+      - "rtsp://admin:kanojia%40123@192.168.0.29:554/Streaming/Channels/102"
+
+    # Parking Area 4K (CP Plus CP-UNC-TA81L3C-LQ on NVR Ch 5)
+    parking_area_4k:
+      - "rtsp://admin:kanojia%40123@192.168.0.29:554/Streaming/Channels/501"
+    parking_area_4k_sub:
+      - "rtsp://admin:kanojia%40123@192.168.0.29:554/Streaming/Channels/502"
+
+    # Side Entrance DVR (Hikvision DVR DS-7A08HQHI-K1 on DVR Ch 1)
+    side_entrance_dvr:
+      - "rtsp://admin:kanojia%40123@192.168.0.11:554/Streaming/Channels/101"
+    side_entrance_dvr_sub:
+      - "rtsp://admin:kanojia%40123@192.168.0.11:554/Streaming/Channels/102"
+
+  webrtc:
+    candidates:
+      - 192.168.0.20:8555
+      - 127.0.0.1:8555
+
+# -------------------------------------------------------
+# Hardware Acceleration for RTSP Decode
+# -------------------------------------------------------
+ffmpeg:
+  hwaccel_args: preset-nvidia-h264
+  output_args:
+    record: preset-record-generic-audio-aac
+
+# -------------------------------------------------------
+# Snapshot & Recording
+# -------------------------------------------------------
+record:
+  enabled: true
+  retain:
+    days: 3
+    mode: motion
+  events:
+    retain:
+      default: 7
+      mode: active_objects
+
+snapshots:
+  enabled: true
+  clean_copy: true
+  timestamp: true
+  bounding_box: true
+  retain:
+    default: 14
+
+# -------------------------------------------------------
+# Object Tracking
+# -------------------------------------------------------
+objects:
+  track:
+    - person
+    - car
+    - motorcycle
+    - bicycle
+    - truck
+    - bus
+    - dog
+    - cat
+  filters:
+    person:
+      min_area: 2500
+      max_area: 200000
+      threshold: 0.65
+    car:
+      min_area: 5000
+      threshold: 0.6
+
+# -------------------------------------------------------
+# Camera Definitions
+# -------------------------------------------------------
+cameras:
+  front_gate_panoramic:
+    enabled: true
+    ffmpeg:
+      inputs:
+        - path: rtsp://127.0.0.1:8554/front_gate_panoramic
+          input_args: preset-rtsp-restream
+          roles:
+            - record
+        - path: rtsp://127.0.0.1:8554/front_gate_panoramic_sub
+          input_args: preset-rtsp-restream
+          roles:
+            - detect
+    detect:
+      enabled: true
+      width: 1200
+      height: 536
+      fps: 5
+    motion:
+      threshold: 30
+      contour_area: 50
+    mqtt:
+      enabled: true
+      timestamp: true
+      bounding_box: true
+      crop: true
+
+  backyard_turret:
+    enabled: true
+    ffmpeg:
+      inputs:
+        - path: rtsp://127.0.0.1:8554/backyard_turret
+          input_args: preset-rtsp-restream
+          roles:
+            - record
+        - path: rtsp://127.0.0.1:8554/backyard_turret_sub
+          input_args: preset-rtsp-restream
+          roles:
+            - detect
+    detect:
+      enabled: true
+      width: 640
+      height: 360
+      fps: 5
+    motion:
+      threshold: 25
+      contour_area: 40
+
+  parking_area_4k:
+    enabled: true
+    ffmpeg:
+      inputs:
+        - path: rtsp://127.0.0.1:8554/parking_area_4k
+          input_args: preset-rtsp-restream
+          roles:
+            - record
+        - path: rtsp://127.0.0.1:8554/parking_area_4k_sub
+          input_args: preset-rtsp-restream
+          roles:
+            - detect
+    detect:
+      enabled: true
+      width: 704
+      height: 576
+      fps: 5
+    motion:
+      threshold: 30
+      contour_area: 60
+
+  side_entrance_dvr:
+    enabled: true
+    ffmpeg:
+      inputs:
+        - path: rtsp://127.0.0.1:8554/side_entrance_dvr
+          input_args: preset-rtsp-restream
+          roles:
+            - record
+        - path: rtsp://127.0.0.1:8554/side_entrance_dvr_sub
+          input_args: preset-rtsp-restream
+          roles:
+            - detect
+    detect:
+      enabled: true
+      width: 960
+      height: 480
+      fps: 5
+    motion:
+      threshold: 30
+      contour_area: 50
+
+# -------------------------------------------------------
+# UI Configuration
+# -------------------------------------------------------
+ui:
+  live_mode: webrtc
+  timezone: Asia/Kolkata

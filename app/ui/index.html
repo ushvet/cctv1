@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="AI-Powered CCTV Command Center — Real-time face recognition, license plate detection, and natural language video search for Hikvision security systems.">
+    <title>CCTV AI Command Center</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
+</head>
+<body>
+
+<div class="app-layout">
+
+    <!-- =============== SIDEBAR NAVIGATION =============== -->
+    <nav class="sidebar" id="sidebar">
+        <div class="sidebar-logo" title="AI CCTV">🛡️</div>
+
+        <div class="nav-items">
+            <button class="nav-item active" data-page="dashboard" id="nav-dashboard">
+                📊
+                <span class="tooltip">Dashboard</span>
+            </button>
+            <button class="nav-item" data-page="cameras" id="nav-cameras">
+                📷
+                <span class="tooltip">Live Cameras</span>
+            </button>
+            <button class="nav-item" data-page="events" id="nav-events">
+                ⚡
+                <span class="tooltip">Events</span>
+            </button>
+            <button class="nav-item" data-page="faces" id="nav-faces">
+                👤
+                <span class="tooltip">Face Registry</span>
+            </button>
+            <button class="nav-item" data-page="plates" id="nav-plates">
+                🚗
+                <span class="tooltip">License Plates</span>
+            </button>
+            <button class="nav-item" data-page="search" id="nav-search">
+                🔍
+                <span class="tooltip">AI Search</span>
+            </button>
+        </div>
+
+        <div class="sidebar-status">
+            <div class="status-dot online" id="status-dot" title="System Online"></div>
+        </div>
+    </nav>
+
+    <!-- =============== MAIN CONTENT =============== -->
+    <div class="main-content">
+
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <div>
+                    <div class="header-title">AI CCTV Command Center</div>
+                    <div class="header-subtitle">Hikvision DS-7608NXI-K1 &middot; DS-7A08HQHI-K1</div>
+                </div>
+            </div>
+            <div class="header-right">
+                <div class="header-stat">
+                    📷 Cameras: <span class="stat-value" id="header-cam-count">0</span>
+                </div>
+                <div class="header-stat">
+                    ⚡ Today: <span class="stat-value" id="header-today-count">0</span>
+                </div>
+                <div class="connection-badge disconnected" id="ws-badge">
+                    <span class="status-dot offline" style="width:6px;height:6px;"></span>
+                    <span id="ws-status-text">Connecting...</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- ============ DASHBOARD PAGE ============ -->
+        <div class="page-content active" id="page-dashboard">
+            <!-- Stats Row -->
+            <div class="stats-grid" id="stats-grid">
+                <div class="stat-card blue">
+                    <div class="stat-icon">📷</div>
+                    <div class="stat-value" id="stat-cameras">—</div>
+                    <div class="stat-label">Active Cameras</div>
+                </div>
+                <div class="stat-card cyan">
+                    <div class="stat-icon">⚡</div>
+                    <div class="stat-value" id="stat-today">—</div>
+                    <div class="stat-label">Events Today</div>
+                </div>
+                <div class="stat-card amber">
+                    <div class="stat-icon">🚶</div>
+                    <div class="stat-value" id="stat-humans">—</div>
+                    <div class="stat-label">Humans Detected</div>
+                </div>
+                <div class="stat-card emerald">
+                    <div class="stat-icon">🚗</div>
+                    <div class="stat-value" id="stat-vehicles">—</div>
+                    <div class="stat-label">Vehicles Detected</div>
+                </div>
+                <div class="stat-card violet">
+                    <div class="stat-icon">👤</div>
+                    <div class="stat-value" id="stat-faces">—</div>
+                    <div class="stat-label">Faces Recognized</div>
+                </div>
+                <div class="stat-card rose">
+                    <div class="stat-icon">🔔</div>
+                    <div class="stat-value" id="stat-unack">—</div>
+                    <div class="stat-label">Unacknowledged</div>
+                </div>
+            </div>
+
+            <!-- Dashboard Two-Column -->
+            <div class="dashboard-grid">
+                <!-- Camera Preview Grid -->
+                <div class="glass-card">
+                    <div class="card-header">
+                        <div class="card-title"><span class="icon">📷</span> Camera Overview</div>
+                        <button class="btn btn-ghost" onclick="navigateTo('cameras')">View All →</button>
+                    </div>
+                    <div class="camera-grid" id="dashboard-camera-grid">
+                        <div class="empty-state">
+                            <div class="icon">📷</div>
+                            <div class="title">Loading cameras...</div>
+                            <div class="description">Connecting to Hikvision recorders</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Live Alert Feed -->
+                <div class="glass-card">
+                    <div class="card-header">
+                        <div class="card-title"><span class="icon">⚡</span> Live Alerts</div>
+                        <button class="btn btn-ghost" onclick="acknowledgeAll()">✓ Ack All</button>
+                    </div>
+                    <div class="alert-feed" id="live-alert-feed">
+                        <div class="empty-state">
+                            <div class="icon">🔔</div>
+                            <div class="title">Waiting for events...</div>
+                            <div class="description">AI alerts will appear here in real-time</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============ CAMERAS PAGE ============ -->
+        <div class="page-content" id="page-cameras">
+            <div class="card-header">
+                <div class="card-title" style="font-size:1.3rem;">📷 Live Camera Feeds</div>
+                <button class="btn btn-primary" onclick="openAddCameraModal()">+ Add Camera</button>
+            </div>
+            <div class="camera-grid" id="cameras-full-grid">
+                <div class="empty-state">
+                    <div class="icon">📷</div>
+                    <div class="title">Loading cameras...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============ EVENTS PAGE ============ -->
+        <div class="page-content" id="page-events">
+            <div class="card-header">
+                <div class="card-title" style="font-size:1.3rem;">⚡ Security Events</div>
+                <div style="display:flex;gap:8px;">
+                    <select class="form-select" id="event-filter-type" style="width:160px;" onchange="loadEvents()">
+                        <option value="">All Types</option>
+                        <option value="human">Human</option>
+                        <option value="vehicle">Vehicle</option>
+                        <option value="face">Face</option>
+                        <option value="license_plate">License Plate</option>
+                    </select>
+                    <button class="btn btn-ghost" onclick="loadEvents()">↻ Refresh</button>
+                    <button class="btn btn-primary" onclick="acknowledgeAll()">✓ Acknowledge All</button>
+                </div>
+            </div>
+            <div class="glass-card" style="padding:0;overflow:hidden;">
+                <table class="data-table" id="events-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Camera</th>
+                            <th>Source</th>
+                            <th>Target</th>
+                            <th>Confidence</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="events-tbody">
+                        <tr><td colspan="7" class="empty-state">Loading events...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div style="display:flex;justify-content:center;gap:8px;margin-top:16px;" id="events-pagination"></div>
+        </div>
+
+        <!-- ============ FACES PAGE ============ -->
+        <div class="page-content" id="page-faces">
+            <div class="card-header">
+                <div class="card-title" style="font-size:1.3rem;">👤 Face Registry & Watchlist</div>
+                <button class="btn btn-primary" id="btn-enroll-face" onclick="openEnrollFaceModal()">+ Enroll Face</button>
+            </div>
+            <div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:24px;">
+                <div class="stat-card emerald">
+                    <div class="stat-icon">👥</div>
+                    <div class="stat-value" id="face-total">0</div>
+                    <div class="stat-label">Total Enrolled</div>
+                </div>
+                <div class="stat-card amber">
+                    <div class="stat-icon">⭐</div>
+                    <div class="stat-value" id="face-vip">0</div>
+                    <div class="stat-label">VIP</div>
+                </div>
+                <div class="stat-card blue">
+                    <div class="stat-icon">👔</div>
+                    <div class="stat-value" id="face-staff">0</div>
+                    <div class="stat-label">Staff</div>
+                </div>
+                <div class="stat-card rose">
+                    <div class="stat-icon">🚫</div>
+                    <div class="stat-value" id="face-blacklist">0</div>
+                    <div class="stat-label">Blacklist</div>
+                </div>
+            </div>
+            <div class="glass-card" style="padding:0;overflow:hidden;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Photo</th>
+                            <th>Name</th>
+                            <th>Category</th>
+                            <th>Detections</th>
+                            <th>Enrolled</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="faces-tbody">
+                        <tr><td colspan="6" class="empty-state">Loading face registry...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ============ PLATES PAGE ============ -->
+        <div class="page-content" id="page-plates">
+            <div class="card-header">
+                <div class="card-title" style="font-size:1.3rem;">🚗 License Plate Registry</div>
+                <button class="btn btn-primary" onclick="openAddPlateModal()">+ Register Plate</button>
+            </div>
+            <div class="glass-card" style="padding:0;overflow:hidden;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Plate Number</th>
+                            <th>Owner</th>
+                            <th>Category</th>
+                            <th>Vehicle</th>
+                            <th>Detections</th>
+                            <th>Last Seen</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="plates-tbody">
+                        <tr><td colspan="7" class="empty-state">Loading plate registry...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <h3 style="margin:24px 0 16px;font-weight:600;">Recent Plate Detections</h3>
+            <div class="glass-card" style="padding:0;overflow:hidden;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Detected Text</th>
+                            <th>Confidence</th>
+                            <th>Match</th>
+                            <th>Time</th>
+                        </tr>
+                    </thead>
+                    <tbody id="plate-detections-tbody">
+                        <tr><td colspan="4" class="empty-state">No detections yet</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ============ AI SEARCH PAGE ============ -->
+        <div class="page-content" id="page-search">
+            <div class="card-header">
+                <div class="card-title" style="font-size:1.3rem;">🔍 AI-Powered Video Search</div>
+            </div>
+            <div class="search-container">
+                <div class="search-bar" id="search-bar">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" id="search-input"
+                           placeholder="Describe what you're looking for... e.g. 'person in dark clothing near the gate'"
+                           autocomplete="off">
+                    <button class="search-btn" onclick="runSearch()">Search</button>
+                </div>
+                <div style="margin-top:8px;font-size:0.78rem;color:var(--text-muted);">
+                    💡 Try: "red car in parking" · "delivery person at entrance" · "dog in backyard at night"
+                </div>
+            </div>
+            <div class="search-results" id="search-results">
+                <div class="empty-state" style="grid-column:1/-1;">
+                    <div class="icon">🔍</div>
+                    <div class="title">Search your security footage with natural language</div>
+                    <div class="description">MobileCLIP semantic search powered by pgvector</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Toast Notification Container -->
+<div class="toast-container" id="toast-container"></div>
+
+<!-- ============ MODALS ============ -->
+<!-- Enroll Face Modal -->
+<div id="modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);z-index:500;display:none;align-items:center;justify-content:center;">
+    <div class="glass-card" style="width:480px;max-width:90vw;max-height:90vh;overflow-y:auto;" id="modal-content">
+        <!-- Modal content injected by JS -->
+    </div>
+</div>
+
+<!-- Scripts -->
+<script src="/static/js/webrtc.js"></script>
+<script src="/static/js/app.js"></script>
+<script src="/static/js/search.js"></script>
+
+</body>
+</html>
